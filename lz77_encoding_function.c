@@ -1,18 +1,17 @@
 #include "lz77_encoding_function.h"
 
-
 void LZ77_encode(unsigned char *pgm_image_data, long int *imageData_index, unsigned int max_buffer_size, long int imageData_size,
                  int *offset, int *offset_length, unsigned char *next_symbols, long int *encodeData_index){
     // initialize window of 0 length
     int offset_count = 0, length_count = 0;  
     unsigned char next_symbol = pgm_image_data[(*imageData_index)];
-    
+
     
     // traverse elements in the buffer with max_buffer_size backwordly
-    for (int buffer_index = (*imageData_index) - 1; buffer_index >= 0 || ((*imageData_index)-buffer_index)>max_buffer_size ; buffer_index--) {
+    for (long int buffer_index = (*imageData_index) - 1; buffer_index >= 0 && buffer_index > (*imageData_index)-max_buffer_size ; buffer_index--) {
         int maxMatchLength = 0;
         int window_index=0;
-
+        // printf("tracking 002 %ld \n ", buffer_index);
         //traverse image started at the index
         while ( pgm_image_data[buffer_index + (window_index % ((*imageData_index) - buffer_index))] == pgm_image_data[(*imageData_index) + maxMatchLength]
                 // pgm_image_data[buffer_index+window_index] == pgm_image_data[(*imageData_index)+maxMatchLength] //if the window match, keep while
@@ -20,6 +19,7 @@ void LZ77_encode(unsigned char *pgm_image_data, long int *imageData_index, unsig
                 ) {
             maxMatchLength++;
             window_index++;
+
             if(buffer_index+maxMatchLength == (*imageData_index)) //if the window reach the index of image, restart traverse in window
                 break;
         }
@@ -27,6 +27,7 @@ void LZ77_encode(unsigned char *pgm_image_data, long int *imageData_index, unsig
             offset_count = (*imageData_index)-buffer_index;
             length_count = maxMatchLength;
             next_symbol = pgm_image_data[(*imageData_index)+maxMatchLength];
+
         }
         //if reach the end of image, end searching in buff
         if((*imageData_index)+length_count >= imageData_size-1)
@@ -36,6 +37,7 @@ void LZ77_encode(unsigned char *pgm_image_data, long int *imageData_index, unsig
     offset_length[(*encodeData_index)] = length_count;
     next_symbols[(*encodeData_index)] = next_symbol;
     (*imageData_index) += (length_count+1);
+
 
 }
 
@@ -64,7 +66,7 @@ void Encode_Using_LZ77(char *in_PGM_filename_Ptr, unsigned int searching_buffer_
     printf("mg: %d \n", maxGrayValue);
 
     //variables for encoding
-    int imageSize = width * height;
+    long int imageSize = width * height;
     unsigned char *imageData = (unsigned char*)malloc(imageSize*sizeof(unsigned char));
     long int imageIndex = 0;
     for(int row = 0; row < height; row++){
@@ -80,25 +82,59 @@ void Encode_Using_LZ77(char *in_PGM_filename_Ptr, unsigned int searching_buffer_
     long int encodeIndex = 0;
     
     // encode
-    int offset_count = 0, length_count = 0;
     while(imageIndex < imageSize){
         LZ77_encode(imageData,&imageIndex,searching_buffer_size,imageSize,offsets,match_lengths,next_symbols,&encodeIndex);
-        printf("token %d %d %d \n", offsets[encodeIndex], match_lengths[encodeIndex],next_symbols[encodeIndex]);
         encodeIndex++;
     }
     
+    fwrite(&encodeIndex,sizeof(long int),1,outputFile);
     fwrite(offsets,sizeof(int),encodeIndex,outputFile);
     fwrite(match_lengths,sizeof(int),encodeIndex,outputFile);
     fwrite(next_symbols,sizeof(unsigned char),encodeIndex,outputFile);//save the encoded data
-    printf("success save codes %d \n", encodeIndex);
-
+    printf("success save codes %ld \n", encodeIndex);
     fclose(outputFile);
 
-    // 计算偏移和匹配长度的统计数据
+    char offsetsCSVFilename[256];
+    snprintf(offsetsCSVFilename, sizeof(offsetsCSVFilename), "%s.%u.offsets.csv", in_PGM_filename_Ptr, searching_buffer_size);
+    FILE *offsetsCSVFile = fopen(offsetsCSVFilename, "wb");
+    if (!offsetsCSVFile) {
+        perror("Error creating output file");
+        return;
+    }
+    long int *offsetsFrequency = (long int *)calloc(searching_buffer_size, sizeof(long int));
+    for(long int i=0; i<encodeIndex; i++){
+        offsetsFrequency[offsets[i]]++;
+    }
+    for(long int i=0; i<searching_buffer_size; i++){
+        if (offsetsFrequency[i] != 0) { // 只写入非零值
+            fprintf(offsetsCSVFile, "%ld, %ld\n", i, offsetsFrequency[i]);
+        }
+    }
+    fclose(offsetsCSVFile);
+
+    char lengthsCSVFilename[256];
+    snprintf(lengthsCSVFilename, sizeof(lengthsCSVFilename), "%s.%u.lengths.csv", in_PGM_filename_Ptr, searching_buffer_size);
+    FILE *lengthsCSVFile = fopen(lengthsCSVFilename, "wb");
+    if (!lengthsCSVFile) {
+        perror("Error creating output file");
+        return;
+    }
+    long int *lengthsFrequency = (long int *)calloc(searching_buffer_size, sizeof(long int));
+    for(long int i=0; i<encodeIndex; i++){
+        lengthsFrequency[match_lengths[i]]++;
+    }
+    for(long int i=0; i<searching_buffer_size; i++){
+        if (lengthsFrequency[i] != 0) { // 只写入非零值
+            fprintf(lengthsCSVFile, "%ld, %ld\n", i, lengthsFrequency[i]);
+        }
+    }
+    fclose(offsetsCSVFile);
+
+    // statistics
     calculate_statistics(offsets, encodeIndex, avg_offset_Ptr, std_offset_Ptr);
     calculate_statistics(match_lengths, encodeIndex, avg_length_Ptr, std_length_Ptr);
 
-    // 清理内存
+    // free
     free(imageData);
     free(offsets);
     free(match_lengths);

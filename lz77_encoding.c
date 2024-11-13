@@ -14,7 +14,7 @@ int main(int argc, char *argv[]){
     float avg_offset, std_offset, avg_length, std_length;
     Encode_Using_LZ77(filename,buffersize,&avg_offset,&std_offset,&avg_length,&std_length);
 
-    printf("offset avg %f std %f", avg_offset, std_offset);
-    printf("length avg %f std %f", avg_length, std_length);
+    printf("offset avg %f std %f \n", avg_offset, std_offset);
+    printf("length avg %f std %f \n", avg_length, std_length);
 
 }
